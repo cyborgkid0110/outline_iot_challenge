@@ -155,7 +155,7 @@ class TemperatureCharacteristic(bluetooth_gatt.Characteristic):
         print("simulated temperature: "+str(self.temperature)+"C")
         if self.notifying:
             self.notify_temperature()
-        # GLib.timeout_add(1000, self.simulate_temperature)
+        GLib.timeout_add(1000, self.simulate_temperature)
 
     # send value from server to client when client have READ request
     def ReadValue(self, options):
@@ -174,6 +174,7 @@ class TemperatureCharacteristic(bluetooth_gatt.Characteristic):
         return self.notifying
 
     def StartNotify(self):
+        self.clients.append(self.bus.get_name())
         print("Starting notifications")
         self.notifying = True
 
@@ -197,44 +198,67 @@ class TemperatureService(bluetooth_gatt.Service):
 class EnergyCharacteristic(bluetooth_gatt.Characteristic):
     voltage = 0
     current = 0
+    frequency = 0
     power = 0
+    power_factor = 0
+
     def __init__(self, bus, index, service):
         bluetooth_gatt.Characteristic.__init__(
                                 self, bus, index,
                                 bluetooth_constants.ENERGY_CHR_UUID,
-                                ['write', 'authorize'],
+                                ['write'],
                                 service)
     # receive data from client when client send WRITE request or command
     def WriteValue(self, value, options):
         energy_data = bluetooth_utils.dbus_to_python(value)
+        print(energy_data)
         self.voltage = energy_data[0]
         self.current = energy_data[1]
         self.power = energy_data[2]
-        print(energy_data)
-        print("Received energy data:")
-        print(f"Voltage: {self.voltage}")
-        print(f"Current: {self.current}")
-        print(f"Power: {self.power}")
-        if self.authorized():
-            print("Authorized")
-        else:
-            print("Not authorized")
-            raise bluetooth_exceptions.NotAuthorizedException()
+        self.pf = energy_data[3]
+        self.frequency = energy_data[4]
 
-    def authorized(self):
-        global approved_array
-        if self.voltage == approved_array[0] and self.current == approved_array[1] and self.power == approved_array[2]:
-            return True
-        else:
-            return False
+class SensorCharacteristic(bluetooth_gatt.Characteristic):
+    temp = 0
+    humid = 0
+    wind = 0
+    pm25 = 0
+    def __init__(self, bus, index, service):
+        bluetooth_gatt.Characteristic.__init__(
+                                self, bus, index,
+                                bluetooth_constants.ENERGY_CHR_UUID,
+                                ['write'],
+                                service)
+    def WriteValue(self, value, options):
+        sensor_data = bluetooth_utils.dbus_to_python(value)
+        print(sensor_data)
+        self.temp = sensor_data[0]
+        self.humid = sensor_data[1]
+        self.wind = sensor_data[2]
+        self.pm25 = sensor_data[3]
 
-class EnergyService(bluetooth_gatt.Service):
-    def __init__(self, bus, path_base, index):
-        print("Initialising EnergyService object")
-        bluetooth_gatt.Service.__init__(self, bus, path_base, index,
-                                        bluetooth_constants.ENERGY_SVC_UUID, True)
-        print("Adding EnergyCharacteristic to the service")
-        self.add_characteristic(EnergyCharacteristic(bus, 0, self))
+class FanDataCharacteristic(bluetooth_gatt.Characteristic):
+    pass
+class FanControlCharacteristic(bluetooth_gatt.Characteristic):
+    set_speed = 0
+    def __init__(self, bus, index, service):
+        bluetooth_gatt.Characteristic.__init__(
+                                self, bus, index,
+                                bluetooth_constants.ENERGY_CHR_UUID,
+                                ['read', 'notify'],
+                                service)
+    def readValue():
+        print('Send')
+        print('Returning '+str(self.temperature))
+        value = []
+        value.append(dbus.Byte(self.temperature))
+        print(self.clients)
+        return value
+    pass
+class ACDataCharacteristic(bluetooth_gatt.Characteristic):
+    pass
+class ACControlCharacteristic(bluetooth_gatt.Characteristic):
+    pass
 
 # setup application layer   
 class Application(dbus.service.Object):

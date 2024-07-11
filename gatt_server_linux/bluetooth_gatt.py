@@ -74,6 +74,7 @@ class Characteristic(dbus.service.Object):
         self.service = service
         self.flags = flags
         self.descriptors = []
+        self.clients = []
         dbus.service.Object.__init__(self, bus, self.path)
 
     def get_properties(self):
