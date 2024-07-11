@@ -20,6 +20,7 @@ adv_mgr_interface = None
 adv = None
 connected = 0
 approved_array = [0x32 , 0x62, 0x10]
+mac_target = None
 
 # much of this code was copied from or inspired by test/example-advertisement in the BlueZ source
 class Advertisement(dbus.service.Object):
@@ -174,7 +175,6 @@ class TemperatureCharacteristic(bluetooth_gatt.Characteristic):
         return self.notifying
 
     def StartNotify(self):
-        self.clients.append(self.bus.get_name())
         print("Starting notifications")
         self.notifying = True
 
@@ -196,6 +196,7 @@ class TemperatureService(bluetooth_gatt.Service):
         self.add_characteristic(TemperatureCharacteristic(bus, 0, self))
 
 class EnergyCharacteristic(bluetooth_gatt.Characteristic):
+    em_id = 0
     voltage = 0
     current = 0
     frequency = 0
@@ -212,13 +213,31 @@ class EnergyCharacteristic(bluetooth_gatt.Characteristic):
     def WriteValue(self, value, options):
         energy_data = bluetooth_utils.dbus_to_python(value)
         print(energy_data)
-        self.voltage = energy_data[0]
-        self.current = energy_data[1]
-        self.power = energy_data[2]
-        self.pf = energy_data[3]
-        self.frequency = energy_data[4]
+        self.em_id = energy_data[0]
+        self.voltage = energy_data[1]
+        self.current = energy_data[2]
+        self.power = energy_data[3]
+        self.pf = energy_data[4]
+        self.frequency = energy_data[5]
+
+class EnergyNodeInfoCharacteristic(bluetooth_gatt.Characteristic):
+    mac = 0
+    def __init__(self, bus, index, service):
+        bluetooth_gatt.Characteristic.__init__(
+                                self, bus, index,
+                                bluetooth_constants.ENERGY_CHR_UUID,
+                                ['write', 'read'],
+                                service)
+    def WriteValue(self, value, options):
+        mac = bluetooth_utils.dbus_to_python(value)
+        self.mac = mac
+    
+    def check_mac(self):
+        if self.mac == mac_target:
+            print(self.mac)
 
 class SensorCharacteristic(bluetooth_gatt.Characteristic):
+    sensor_id = 0
     temp = 0
     humid = 0
     wind = 0
@@ -226,35 +245,41 @@ class SensorCharacteristic(bluetooth_gatt.Characteristic):
     def __init__(self, bus, index, service):
         bluetooth_gatt.Characteristic.__init__(
                                 self, bus, index,
-                                bluetooth_constants.ENERGY_CHR_UUID,
+                                bluetooth_constants.SENSOR_CHR_UUID,
                                 ['write'],
                                 service)
     def WriteValue(self, value, options):
         sensor_data = bluetooth_utils.dbus_to_python(value)
         print(sensor_data)
-        self.temp = sensor_data[0]
-        self.humid = sensor_data[1]
-        self.wind = sensor_data[2]
-        self.pm25 = sensor_data[3]
+        self.sensor_id = sensor_data[0]
+        self.temp = sensor_data[1]
+        self.humid = sensor_data[2]
+        self.wind = sensor_data[3]
+        self.pm25 = sensor_data[4]
 
 class FanDataCharacteristic(bluetooth_gatt.Characteristic):
     pass
 class FanControlCharacteristic(bluetooth_gatt.Characteristic):
     set_speed = 0
+    fan_id = 0
     def __init__(self, bus, index, service):
         bluetooth_gatt.Characteristic.__init__(
                                 self, bus, index,
                                 bluetooth_constants.ENERGY_CHR_UUID,
                                 ['read', 'notify'],
                                 service)
-    def readValue():
-        print('Send')
-        print('Returning '+str(self.temperature))
+    def ReadValue(self):
+        print(f'Send control data to fan_id = {self.fan_id} ')
+        print('Returning '+str(self.set_speed))
         value = []
-        value.append(dbus.Byte(self.temperature))
-        print(self.clients)
+        value.append(dbus.ByteArray([self.fan_id, self.set_speed]))
         return value
-    pass
+    
+    def send_control(self, set_spped, fan_id):
+        self.fan_id = fan_id
+        self.set_speed = set_spped
+
+    
 class ACDataCharacteristic(bluetooth_gatt.Characteristic):
     pass
 class ACControlCharacteristic(bluetooth_gatt.Characteristic):
@@ -308,6 +333,8 @@ bus = dbus.SystemBus()
 # we're assuming the adapter supports advertising
 adapter_path = bluetooth_constants.BLUEZ_NAMESPACE + bluetooth_constants.ADAPTER_NAME
 print(adapter_path)
+
+bus.add_signal_receiver
 
 # bus.add_signal_receiver(properties_changed,
 #         dbus_interface = bluetooth_constants.DBUS_PROPERTIES,
