@@ -153,7 +153,6 @@ class TemperatureCharacteristic(bluetooth_gatt.Characteristic):
             self.temperature = 50
         elif (self.temperature < 0):
             self.temperature = 0     
-        print("simulated temperature: "+str(self.temperature)+"C")
         if self.notifying:
             self.notify_temperature()
         GLib.timeout_add(1000, self.simulate_temperature)
@@ -220,21 +219,21 @@ class EnergyCharacteristic(bluetooth_gatt.Characteristic):
         self.pf = energy_data[4]
         self.frequency = energy_data[5]
 
-class EnergyNodeInfoCharacteristic(bluetooth_gatt.Characteristic):
-    mac = 0
-    def __init__(self, bus, index, service):
-        bluetooth_gatt.Characteristic.__init__(
-                                self, bus, index,
-                                bluetooth_constants.ENERGY_CHR_UUID,
-                                ['write', 'read'],
-                                service)
-    def WriteValue(self, value, options):
-        mac = bluetooth_utils.dbus_to_python(value)
-        self.mac = mac
+# class EnergyNodeInfoCharacteristic(bluetooth_gatt.Characteristic):
+#     mac = 0
+#     def __init__(self, bus, index, service):
+#         bluetooth_gatt.Characteristic.__init__(
+#                                 self, bus, index,
+#                                 bluetooth_constants.ENERGY_CHR_UUID,
+#                                 ['write', 'read'],
+#                                 service)
+#     def WriteValue(self, value, options):
+#         mac = bluetooth_utils.dbus_to_python(value)
+#         self.mac = mac
     
-    def check_mac(self):
-        if self.mac == mac_target:
-            print(self.mac)
+#     def check_mac(self):
+#         if self.mac == mac_target:
+#             print(self.mac)
 
 class SensorCharacteristic(bluetooth_gatt.Characteristic):
     sensor_id = 0
@@ -262,28 +261,118 @@ class FanDataCharacteristic(bluetooth_gatt.Characteristic):
 class FanControlCharacteristic(bluetooth_gatt.Characteristic):
     set_speed = 0
     fan_id = 0
+    notifying = False
+    send_status = False
     def __init__(self, bus, index, service):
         bluetooth_gatt.Characteristic.__init__(
                                 self, bus, index,
-                                bluetooth_constants.ENERGY_CHR_UUID,
+                                bluetooth_constants.FAN_CONTROL_CHR_UUID,
                                 ['read', 'notify'],
                                 service)
-    def ReadValue(self):
+        self.fan_id = 0
+        self.set_speed = 0
+        self.send_status = False
+        self.notifying = False
+        GLib.timeout_add(1000, self.send_control)
+
+    def ReadValue(self, options):
         print(f'Send control data to fan_id = {self.fan_id} ')
         print('Returning '+str(self.set_speed))
         value = []
-        value.append(dbus.ByteArray([self.fan_id, self.set_speed]))
+        value.append(dbus.Byte(self.fan_id))
+        value.append(dbus.Byte(self.set_speed))
         return value
     
-    def send_control(self, set_spped, fan_id):
-        self.fan_id = fan_id
-        self.set_speed = set_spped
+    def send_control(self):
+        self.fan_id = 1
+        self.set_speed = 32
+        # logic function
 
+        if self.notifying == True:
+            self.notify_control()
+            self.send_status = False
+        GLib.timeout_add(1000, self.send_control)
+
+    def notify_control(self):
+        value = []
+        value.append(dbus.Byte(self.fan_id))
+        value.append(dbus.Byte(self.set_speed))
+        print("Notifying control fan: Fan ID: "+str(self.fan_id) + ", Speed: " +str(self.set_speed))
+        self.PropertiesChanged(bluetooth_constants.GATT_CHARACTERISTIC_INTERFACE, { 'Value': value }, [])
+
+    def StartNotify(self):
+        print("Starting notify control fan")
+        self.notifying = True
+
+    def StopNotify(self):
+        print("Stopping notify control fan")
+        self.notifying = False
     
 class ACDataCharacteristic(bluetooth_gatt.Characteristic):
     pass
 class ACControlCharacteristic(bluetooth_gatt.Characteristic):
-    pass
+    state = 0
+    ac_id = 0
+    set_temp = 0
+    notifying = False
+    send_status = False
+    def __init__(self, bus, index, service):
+        bluetooth_gatt.Characteristic.__init__(
+                                self, bus, index,
+                                bluetooth_constants.AC_CONTROL_CHR_UUID,
+                                ['read', 'notify'],
+                                service)
+        self.state = 2
+        self.ac_id = 4
+        self.set_temp = 6
+        self.send_status = False
+        self.notifying = False
+        GLib.timeout_add(1000, self.send_control)
+
+    def ReadValue(self, options):
+        print(f'Send control data to fan_id = {self.ac_id} ')
+        print('Returning '+str(self.set_temp))
+        value = []
+        value.append(dbus.Dictionary([self.ac_id, self.set_temp]))
+        return value
+    
+    def send_control(self):
+        # logic function
+
+        if self.notifying == True:
+            self.notify_control()
+            self.send_status = False
+        GLib.timeout_add(1000, self.send_control)
+
+    def notify_control(self):
+        value = []
+        value.append(dbus.Byte(self.ac_id))
+        value.append(dbus.Byte(self.state))
+        value.append(dbus.Byte(self.set_temp))
+        print("Notifying control ac: AC ID: "+str(self.ac_id) + ", State: " + str(self.state) + ", Speed: " +str(self.set_temp))
+        self.PropertiesChanged(bluetooth_constants.GATT_CHARACTERISTIC_INTERFACE, { 'Value': value }, [])
+
+    def StartNotify(self):
+        print("Starting notify control AC")
+        self.notifying = True
+
+    def StopNotify(self):
+        print("Stopping notify control AC")
+        self.notifying = False
+
+class ThingService(bluetooth_gatt.Service):
+    def __init__(self, bus, path_base, index):
+        print("Initialising TemperatureService object")
+        bluetooth_gatt.Service.__init__(self, bus, path_base, index,
+                                        bluetooth_constants.THINGS_SVC_UUID, True)
+        print("Adding SensorCharacteristic to the service")
+        self.add_characteristic(SensorCharacteristic(bus, 0, self))
+        print("Adding EnergyCharacteristic to the service")
+        self.add_characteristic(EnergyCharacteristic(bus, 1, self))
+        print("Adding FanControlCharacteristic to the service")
+        self.add_characteristic(FanControlCharacteristic(bus, 2, self))
+        print("Adding ACControlCharacteristic to the service")
+        self.add_characteristic(ACControlCharacteristic(bus, 3, self))
 
 # setup application layer   
 class Application(dbus.service.Object):
@@ -296,8 +385,8 @@ class Application(dbus.service.Object):
         dbus.service.Object.__init__(self, bus, self.path)
         print("Adding TemperatureService to the Application")
         self.add_service(TemperatureService(bus, '/org/bluez/example', 0))
-        print("Adding EnergyService to the Application")
-        self.add_service(EnergyService(bus, '/org/bluez/example', 1))
+        print("Adding ThingService to the Application")
+        self.add_service(ThingService(bus, '/org/bluez/example', 1))
         
     def get_path(self):
         return dbus.ObjectPath(self.path)
